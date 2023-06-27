@@ -66,8 +66,8 @@ exit_handler () {
             echo "backup completed"
             send_succ "backup"
         else
-            echo "ERROR: backup failed"
-            send_error "backup failed"
+            echo "ERROR: backup failed (exit code $retval)"
+            send_error "backup failed (exit code $retval)"
         fi
     else
         if ((retval==0)); then
@@ -118,7 +118,7 @@ bindfs "$REPOSITORY" "$RESTIC_ROOT/repository"
 
 
 # construct and run the backup command
-restic_command=(./restic -r repository backup --ignore-inode "$SOURCE_NAME")
+restic_command=(./restic -r repository backup --ignore-inode /"$SOURCE_NAME")
 chrooted_command=(unshare -rR "$RESTIC_ROOT" "${restic_command[@]}")
 mountpoint="$RESTIC_ROOT/$SOURCE_NAME"
 
