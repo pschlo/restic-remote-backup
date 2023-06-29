@@ -65,7 +65,9 @@ exit_handler () {
                 ;;
             *)
                 if ((retval > 125)); then
-                    echo "received signal $((retval-128))"
+                    signal=$(kill -l $((retval-128)))
+                    echo "ERROR: received $signal signal"
+                    send_error "received $signal signal"
                 elif ((retval > 0)); then
                     echo "ERROR: backup failed with code $retval"
                     send_error "backup failed with code $retval"
