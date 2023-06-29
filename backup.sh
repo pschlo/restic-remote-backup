@@ -11,6 +11,7 @@ SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 
 cd "$SCRIPT_DIR"
 source "./config.sh"
+source "./mount-utils.sh"
 export RESTIC_PASSWORD="$PASSWORD"
 
 
@@ -19,11 +20,11 @@ export RESTIC_PASSWORD="$PASSWORD"
 send_telegram () {
     echo -e "sending Telegram message"
     curl -X POST \
-    --no-progress-meter \
-    -H 'Content-Type: application/json' \
-    -d "{\"chat_id\": $CHAT_ID, \"text\": \"${1}\"}" \
-    https://api.telegram.org/bot$BOT_TOKEN/sendMessage
-    echo -e "\n"
+        --no-progress-meter \
+        -H 'Content-Type: application/json' \
+        -d "{\"chat_id\": $CHAT_ID, \"text\": \"${1}\"}" \
+        https://api.telegram.org/bot$BOT_TOKEN/sendMessage \
+        >/dev/null
 }
 
 timestamp () {
@@ -43,40 +44,18 @@ exit_handler () {
     retval=$?
     set +o errexit
     echo ""
-    echo ""
 
     if [[ ${IS_LAUNCHED+1} ]]; then
-        case $retval in
-            255)
-                echo "ERROR: backup was not started"
-                send_error "backup was not started"
-                ;;
-            128)
-                echo "invalid exit argument"
-                send_error "invalid exit argument"
-                ;;
-            127)
-                echo "program was not found"
-                send_error "program was not found"
-                ;;
-            126)
-                echo "cannot execute program"
-                send_error "cannot execute program"
-                ;;
-            *)
-                if ((retval > 125)); then
-                    signal=$(kill -l $((retval-128)))
-                    echo "ERROR: received $signal signal"
-                    send_error "received $signal signal"
-                elif ((retval > 0)); then
-                    echo "ERROR: backup failed with code $retval"
-                    send_error "backup failed with code $retval"
-                else
-                    echo "backup completed"
-                    send_succ "backup"
-                fi
-                ;;
-        esac
+        if ((retval==255)); then
+            echo "ERROR: backup was not executed or exit signal has been received"
+            send_error "backup was not executed or exit signal has been received"
+        elif ((retval==0)); then
+            echo "backup completed"
+            send_succ "backup"
+        else
+            echo "ERROR: backup failed with code $retval"
+            send_error "backup failed with code $retval"
+        fi
     else
         if ((retval==0)); then
             # this means that exit 0 was called before the backup was started
@@ -88,23 +67,23 @@ exit_handler () {
         fi
     fi
 
-    cleanup
-}
-
-cleanup_err () {
-    echo "ERROR: cleanup unsuccessful"
-    send_error "cleanup error"
-    exit 10
-}
-
-# requires $retval
-cleanup () {
-    echo "deleting temporary backup environment"
-    mountpoint -q "$RESTIC_ROOT/repository" && umount "$RESTIC_ROOT/repository"
-    sleep 0.5
-    rm -d "$RESTIC_ROOT/repository" || cleanup_err
-    rm -r "$RESTIC_ROOT" || cleanup_err
+    cleanup || retval=1
     exit $retval
+}
+
+
+cleanup () {
+    err () { echo "ERROR: cleanup failed"; }
+    echo "removing temporary backup environment"
+    {
+        if [[ ${MOUNT_PID+1} ]]; then
+            stop_mount $MOUNT_PID "$MOUNT_PATH" &&
+            rm -d "$MOUNT_PATH" &&
+            rm -d "$RESTIC_ROOT/$SOURCE_NAME" &&
+            rm -rf "$RESTIC_ROOT"
+        fi
+    } || { err; return 1; }
+    return 0
 }
 
 trap exit_handler EXIT
@@ -116,17 +95,27 @@ trap exit_handler EXIT
 echo "creating temporary backup environment"
 RESTIC_ROOT="$(mktemp -d)"
 mkdir "$RESTIC_ROOT"/{tmp,repository,"$SOURCE_NAME"}
+
+# copy restic executable
 RESTIC_PATH="$(which restic)" && true
 if (($?>0)); then echo "ERROR: could not locate restic"; exit 1; fi
 cp "$(realpath "$RESTIC_PATH")" "$RESTIC_ROOT/restic"
-bindfs "$REPOSITORY" "$RESTIC_ROOT/repository"
+
+# mount restic repository
+# launch as daemon, but keep stdout connected to current terminal
+MOUNT_PATH="$RESTIC_ROOT/repository"
+setsid bindfs -f "$REPOSITORY" "$MOUNT_PATH" &
+MOUNT_PID=$!
+
+wait_mount $MOUNT_PID "$MOUNT_PATH"
 
 
 # construct and run the backup command
 restic_command=(./restic -r repository backup --ignore-inode /"$SOURCE_NAME")
 chrooted_command=(unshare -rR "$RESTIC_ROOT" "${restic_command[@]}")
-mountpoint="$RESTIC_ROOT/$SOURCE_NAME"
 
+echo ""
 IS_LAUNCHED=1
-"./serve-rclone-mount.sh" --mountpoint "$mountpoint" "$SOURCE" "${chrooted_command[@]}" && true
+# ( exit 255 ) && true
+"./serve-rclone-mount.sh" --mountpoint "$RESTIC_ROOT/$SOURCE_NAME" "$SOURCE" "${chrooted_command[@]}" && true
 exit $?
