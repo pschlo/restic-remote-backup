@@ -47,8 +47,8 @@ exit_handler () {
 
     if [[ ${IS_LAUNCHED+1} ]]; then
         if ((retval==255)); then
-            echo "ERROR: backup was not executed or exit signal has been received or cloud cleanup failed"
-            send_error "backup was not executed or exit signal has been received or cloud cleanup failed"
+            echo "ERROR: error occurred or received exit signal"
+            send_error "error occurred or received exit signal"
         elif ((retval==0)); then
             echo "backup completed"
             send_succ "backup"
