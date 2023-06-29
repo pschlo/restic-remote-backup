@@ -4,6 +4,7 @@
 # NOTE: the exit code of this script is meaningless
 
 set -o errexit
+set -o errtrace
 set -o nounset
 set -o pipefail
 SCRIPT_PATH="$(realpath "$0")"
@@ -42,9 +43,16 @@ send_succ () {
 
 exit_handler () {
     retval=$?
-    set +o errexit
-    echo ""
+    # define handler for when cleanup fails
+    # note that it is not possible trap EXIT inside of exit handler
+    err_handler () {
+        echo "ERROR: backup environment cleanup failed"
+        send_error "backup environment cleanup failed"
+        exit 1
+    }
+    trap err_handler ERR
 
+    echo ""
     if [[ ${IS_LAUNCHED+1} ]]; then
         if ((retval==255)); then
             echo "ERROR: error occurred or received exit signal"
@@ -67,26 +75,18 @@ exit_handler () {
         fi
     fi
 
-    cleanup || retval=1
+    cleanup
     exit $retval
 }
 
-
 cleanup () {
-    err () {
-        echo "ERROR: backup environment cleanup failed"
-        send_error "backup environment cleanup failed"
-    }
     echo "removing temporary backup environment"
-    {
-        if [[ ${MOUNT_PID+1} ]]; then
-            stop_mount $MOUNT_PID "$MOUNT_PATH" &&
-            rm -d "$MOUNT_PATH" &&
-            rm -d "$RESTIC_ROOT/$SOURCE_NAME" &&
-            rm -rf "$RESTIC_ROOT"
-        fi
-    } || { err; return 1; }
-    return 0
+    if [[ ${MOUNT_PID+1} ]]; then
+        stop_mount $MOUNT_PID "$MOUNT_PATH"
+        rm -d "$MOUNT_PATH"
+        rm -d "$RESTIC_ROOT/$SOURCE_NAME"
+        rm -rf "$RESTIC_ROOT"
+    fi
 }
 
 trap exit_handler EXIT
@@ -119,6 +119,5 @@ chrooted_command=(unshare -rR "$RESTIC_ROOT" "${restic_command[@]}")
 
 echo ""
 IS_LAUNCHED=1
-# ( exit 255 ) && true
 "./serve-rclone-mount.sh" --mountpoint "$RESTIC_ROOT/$SOURCE_NAME" "$SOURCE" "${chrooted_command[@]}" && true
 exit $?
