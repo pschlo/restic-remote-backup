@@ -14,15 +14,6 @@ source "./config.sh"
 export RESTIC_PASSWORD="$PASSWORD"
 
 
-# for a received signal, this script should return the canonical code
-# otherwise, sending e.g. SIGINT would make the script exit with code 0
-# see https://www.gnu.org/software/libc/manual/html_node/Termination-Signals.html
-# for numbers, see trap -l
-for i in 15 2 3 9 1; do
-    trap "exit $((128+$i))" $i
-done
-
-
 
 
 send_telegram () {
@@ -47,10 +38,6 @@ send_succ () {
     send_telegram "✅ ${1}"
 }
 
-is_special_exit () {
-    (($1>=126)) && (($1<=165))
-}
-
 
 exit_handler () {
     retval=$?
@@ -59,24 +46,40 @@ exit_handler () {
     echo ""
 
     if [[ ${IS_LAUNCHED+1} ]]; then
-        if ((retval==255)); then
-            echo "ERROR: an internal error occurred"
-            send_error "internal error"
-        elif ((retval==0)); then
-            echo "backup completed"
-            send_succ "backup"
-        else
-            echo "ERROR: backup failed (exit code $retval)"
-            send_error "backup failed (exit code $retval)"
-        fi
+        case $retval in
+            255)
+                echo "ERROR: backup was not started"
+                send_error "backup was not started"
+                ;;
+            128)
+                echo "invalid exit argument"
+                send_error "invalid exit argument"
+                ;;
+            127)
+                echo "program was not found"
+                send_error "program was not found"
+                ;;
+            126)
+                echo "cannot execute program"
+                send_error "cannot execute program"
+                ;;
+            *)
+                if ((retval > 125)); then
+                    echo "received signal $((retval-128))"
+                elif ((retval > 0)); then
+                    echo "ERROR: backup failed with code $retval"
+                    send_error "backup failed with code $retval"
+                else
+                    echo "backup completed"
+                    send_succ "backup"
+                fi
+                ;;
+        esac
     else
         if ((retval==0)); then
             # this means that exit 0 was called before the backup was started
             echo "finished without backing up"
             send_succ "finished without backing up"
-        elif is_special_exit $retval; then
-            echo "ERROR: shell error or exit signal"
-            send_error "shell error or exit signal"
         else
             echo "ERROR: backup was not started: an error occurred"
             send_error "backup was not started: an error occurred"
