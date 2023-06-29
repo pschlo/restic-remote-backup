@@ -47,8 +47,8 @@ exit_handler () {
 
     if [[ ${IS_LAUNCHED+1} ]]; then
         if ((retval==255)); then
-            echo "ERROR: backup was not executed or exit signal has been received"
-            send_error "backup was not executed or exit signal has been received"
+            echo "ERROR: backup was not executed or exit signal has been received or cloud cleanup failed"
+            send_error "backup was not executed or exit signal has been received or cloud cleanup failed"
         elif ((retval==0)); then
             echo "backup completed"
             send_succ "backup"
@@ -73,7 +73,10 @@ exit_handler () {
 
 
 cleanup () {
-    err () { echo "ERROR: cleanup failed"; }
+    err () {
+        echo "ERROR: backup environment cleanup failed"
+        send_error "backup environment cleanup failed"
+    }
     echo "removing temporary backup environment"
     {
         if [[ ${MOUNT_PID+1} ]]; then
