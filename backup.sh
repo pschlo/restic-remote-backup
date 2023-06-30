@@ -19,7 +19,7 @@ export RESTIC_PASSWORD="$PASSWORD"
 
 
 send_telegram () {
-    echo -e "sending Telegram message"
+    log -e "sending Telegram message"
     curl -X POST \
         --no-progress-meter \
         -H 'Content-Type: application/json' \
@@ -40,37 +40,45 @@ send_succ () {
     send_telegram "✅ ${1}"
 }
 
+# try to echo to stdout, or if that fails to stderr. If that fails too, do nothing.
+# this is used to ensure the script does not crash if no output is connected and echo fails
+log () {
+    echo "$@" 2>/dev/null || echo "$@" 1>&2 || return 0
+}
+trap : PIPE
+
+
 
 exit_handler () {
     retval=$?
     # define handler for when cleanup fails
     # note that it is not possible trap EXIT inside of exit handler
     err_handler () {
-        echo "ERROR: backup environment cleanup failed"
+        log "ERROR: backup environment cleanup failed"
         send_error "backup environment cleanup failed"
         exit 1
     }
     trap err_handler ERR
 
-    echo ""
+    log ""
     if [[ ${IS_LAUNCHED+1} ]]; then
         if ((retval==255)); then
-            echo "ERROR: error occurred or received exit signal"
+            log "ERROR: error occurred or received exit signal"
             send_error "error occurred or received exit signal"
         elif ((retval==0)); then
-            echo "backup completed"
+            log "backup completed"
             send_succ "backup"
         else
-            echo "ERROR: backup failed with code $retval"
+            log "ERROR: backup failed with code $retval"
             send_error "backup failed with code $retval"
         fi
     else
         if ((retval==0)); then
             # this means that exit 0 was called before the backup was started
-            echo "finished without backing up"
+            log "finished without backing up"
             send_succ "finished without backing up"
         else
-            echo "ERROR: backup was not started: an error occurred"
+            log "ERROR: backup was not started: an error occurred"
             send_error "backup was not started: an error occurred"
         fi
     fi
@@ -80,7 +88,7 @@ exit_handler () {
 }
 
 cleanup () {
-    echo "removing temporary backup environment"
+    log "removing temporary backup environment"
     if [[ ${MOUNT_PID+1} ]]; then
         stop_mount $MOUNT_PID "$MOUNT_PATH"
         rm -d "$MOUNT_PATH"
@@ -95,13 +103,13 @@ trap exit_handler EXIT
 
 
 # construct fake restic root dir
-echo "creating temporary backup environment"
+log "creating temporary backup environment"
 RESTIC_ROOT="$(mktemp -d)"
 mkdir "$RESTIC_ROOT"/{tmp,repository,"$SOURCE_NAME"}
 
 # copy restic executable
 RESTIC_PATH="$(which restic)" && true
-if (($?>0)); then echo "ERROR: could not locate restic"; exit 1; fi
+if (($?>0)); then log "ERROR: could not locate restic"; exit 1; fi
 cp "$(realpath "$RESTIC_PATH")" "$RESTIC_ROOT/restic"
 
 # mount restic repository
@@ -117,7 +125,7 @@ wait_mount $MOUNT_PID "$MOUNT_PATH"
 restic_command=(./restic -r repository backup --ignore-inode /"$SOURCE_NAME")
 chrooted_command=(unshare -rR "$RESTIC_ROOT" "${restic_command[@]}")
 
-echo ""
+log ""
 IS_LAUNCHED=1
 "./serve-rclone-mount.sh" --mountpoint "$RESTIC_ROOT/$SOURCE_NAME" "$SOURCE" "${chrooted_command[@]}" && true
 exit $?
