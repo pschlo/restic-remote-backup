@@ -18,6 +18,16 @@ export RESTIC_PASSWORD="$PASSWORD"
 
 
 
+# ---- UTILS ----
+
+# try to echo to stdout, or if that fails to stderr. If that fails too, do nothing.
+# this is used to ensure the script does not crash if no output is connected and echo fails
+log () {
+    echo "$@" 2>/dev/null || echo "$@" 1>&2 || return 0
+}
+trap : PIPE
+
+
 send_telegram () {
     log -e "sending Telegram message"
     curl -X POST \
@@ -40,12 +50,8 @@ send_succ () {
     send_telegram "✅ ${1}"
 }
 
-# try to echo to stdout, or if that fails to stderr. If that fails too, do nothing.
-# this is used to ensure the script does not crash if no output is connected and echo fails
-log () {
-    echo "$@" 2>/dev/null || echo "$@" 1>&2 || return 0
-}
-trap : PIPE
+
+
 
 
 
