@@ -2,6 +2,8 @@
 
 
 # NOTE: the exit code of this script is meaningless
+# NOTE: the cleanup of the source and the repository mounts is pretty rigid
+# however, this script itself does not catch any signals and might thus not clean up properly in case of exit signal
 
 set -o errexit
 set -o errtrace
@@ -76,7 +78,7 @@ exit_handler () {
         fi
     else
         if ((retval==0)); then
-            # this means that exit 0 was called before the backup was started
+            # this means that either exit 0 was called or exit signal was received before the backup was started
             log_info "finished without backing up"
             send_succ "finished without backing up"
         else
