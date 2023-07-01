@@ -6,5 +6,5 @@ done
 
 # append date to input
 while IFS= read -r line; do
-    printf '%s %s\n' ["$(date +"%Y-%m-%d %T")"] "$line";
+    echo "[$(date +"%Y-%m-%d %T")] $line"
 done

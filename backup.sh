@@ -10,26 +10,17 @@ set -o pipefail
 SCRIPT_PATH="$(realpath "$0")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 
-cd "$SCRIPT_DIR"
-source "./config.sh"
-source "./mount-utils.sh"
+source "$SCRIPT_DIR/config.sh"
 export RESTIC_PASSWORD="$PASSWORD"
+REPOSITORY="$(realpath --relative-to "$SCRIPT_DIR" "$REPOSITORY")"
 
 
 
 
 # ---- UTILS ----
 
-# try to echo to stdout, or if that fails to stderr. If that fails too, do nothing.
-# this is used to ensure the script does not crash if no output is connected and echo fails
-log () {
-    echo "$@" 2>/dev/null || echo "$@" 1>&2 || return 0
-}
-trap : PIPE
-
-
 send_telegram () {
-    log -e "sending Telegram message"
+    echo -e "sending Telegram message"
     curl -X POST \
         --no-progress-meter \
         -H 'Content-Type: application/json' \
@@ -60,31 +51,31 @@ exit_handler () {
     # define handler for when cleanup fails
     # note that it is not possible trap EXIT inside of exit handler
     err_handler () {
-        log "ERROR: backup environment cleanup failed"
+        echo "ERROR: backup environment cleanup failed"
         send_error "backup environment cleanup failed"
         exit 1
     }
     trap err_handler ERR
 
-    log ""
+    echo ""
     if [[ ${IS_LAUNCHED+1} ]]; then
         if ((retval==255)); then
-            log "ERROR: error occurred or received exit signal"
+            echo "ERROR: error occurred or received exit signal"
             send_error "error occurred or received exit signal"
         elif ((retval==0)); then
-            log "backup completed"
+            echo "backup completed"
             send_succ "backup"
         else
-            log "ERROR: backup failed with code $retval"
+            echo "ERROR: backup failed with code $retval"
             send_error "backup failed with code $retval"
         fi
     else
         if ((retval==0)); then
             # this means that exit 0 was called before the backup was started
-            log "finished without backing up"
+            echo "finished without backing up"
             send_succ "finished without backing up"
         else
-            log "ERROR: backup was not started: an error occurred"
+            echo "ERROR: backup was not started: an error occurred"
             send_error "backup was not started: an error occurred"
         fi
     fi
@@ -94,12 +85,11 @@ exit_handler () {
 }
 
 cleanup () {
-    log "removing temporary backup environment"
+    echo "removing temporary backup environment"
     if [[ ${MOUNT_PID+1} ]]; then
-        stop_mount $MOUNT_PID "$MOUNT_PATH"
         rm -d "$MOUNT_PATH"
-        rm -d "$RESTIC_ROOT/$SOURCE_NAME"
-        rm -rf "$RESTIC_ROOT"
+        rm -d "$ROOT/$SOURCE_NAME"
+        rm -rf "$ROOT"
     fi
 }
 
@@ -109,29 +99,23 @@ trap exit_handler EXIT
 
 
 # construct fake restic root dir
-log "creating temporary backup environment"
-RESTIC_ROOT="$(mktemp -d)"
-mkdir "$RESTIC_ROOT"/{tmp,repository,"$SOURCE_NAME"}
+echo "creating temporary backup environment"
+ROOT="$(mktemp -d)"
+mkdir "$ROOT"/{tmp,repository,"$SOURCE_NAME"}
 
 # copy restic executable
-RESTIC_PATH="$(which restic)" && true
-if (($?>0)); then log "ERROR: could not locate restic"; exit 1; fi
-cp "$(realpath "$RESTIC_PATH")" "$RESTIC_ROOT/restic"
-
-# mount restic repository
-# launch as daemon, but keep stdout connected to current terminal
-MOUNT_PATH="$RESTIC_ROOT/repository"
-setsid bindfs -f "$REPOSITORY" "$MOUNT_PATH" &
-MOUNT_PID=$!
-
-wait_mount $MOUNT_PID "$MOUNT_PATH"
+restic_path="$(which restic)" && true
+if (($?>0)); then echo "ERROR: could not locate restic"; exit 1; fi
+cp "$(realpath "$restic_path")" "$ROOT/restic"
 
 
 # construct and run the backup command
-restic_command=(./restic -r repository backup --ignore-inode /"$SOURCE_NAME")
-chrooted_command=(unshare -rR "$RESTIC_ROOT" "${restic_command[@]}")
+cmd_1=(/restic -r /repository backup --ignore-inode /"$SOURCE_NAME")
+cmd_2=(unshare -rR "$ROOT" "${cmd_1[@]}")
+cmd_3=("$SCRIPT_DIR/serve-rclone-mount.sh" "$SOURCE" --mountpoint "$ROOT/$SOURCE_NAME" -- "${cmd_2[@]}")
+cmd_4=("$SCRIPT_DIR/serve-bindfs-mount.sh" "$REPOSITORY" --mountpoint "$ROOT/repository" -- "${cmd_3[@]}")
 
-log ""
+echo ""
 IS_LAUNCHED=1
-"./serve-rclone-mount.sh" --mountpoint "$RESTIC_ROOT/$SOURCE_NAME" "$SOURCE" "${chrooted_command[@]}" && true
+"${cmd_4[@]}" && true
 exit $?
