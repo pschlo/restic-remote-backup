@@ -14,7 +14,7 @@ SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 
 source "$SCRIPT_DIR/config.sh"
 export RESTIC_PASSWORD="$PASSWORD"
-REPOSITORY="$(realpath --relative-to "$SCRIPT_DIR" "$REPOSITORY")"
+cd "$SCRIPT_DIR"; REPOSITORY="$(realpath "$REPOSITORY")"
 
 
 
@@ -26,7 +26,7 @@ log_warn () { echo "WARN: $1" >&2; }
 log_info () { echo "$1"; }
 
 send_telegram () {
-    log_info -e "sending Telegram message"
+    log_info "sending Telegram message"
     curl -X POST \
         --no-progress-meter \
         -H 'Content-Type: application/json' \
