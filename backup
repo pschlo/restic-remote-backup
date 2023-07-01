@@ -116,8 +116,8 @@ cp "$(realpath "$restic_path")" "$ROOT/restic"
 # construct command
 cmd_1=(/restic -r /repository backup --ignore-inode /"$SOURCE_NAME")
 cmd_2=(unshare -rR "$ROOT" "${cmd_1[@]}")
-cmd_3=("$SCRIPT_DIR/serve-rclone-mount.sh" "$SOURCE" --mountpoint "$ROOT/$SOURCE_NAME" -- "${cmd_2[@]}")
-cmd_4=("$SCRIPT_DIR/serve-bindfs-mount.sh" "$REPOSITORY" --mountpoint "$ROOT/repository" -- "${cmd_3[@]}")
+cmd_3=("$SCRIPT_DIR/serve-rclone-mount" "$SOURCE" --mountpoint "$ROOT/$SOURCE_NAME" -- "${cmd_2[@]}")
+cmd_4=("$SCRIPT_DIR/serve-bindfs-mount" "$REPOSITORY" --mountpoint "$ROOT/repository" -- "${cmd_3[@]}")
 
 # run the command
 log_info ""
