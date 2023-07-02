@@ -5,7 +5,18 @@ This script fixes a problem in restic: a parent snapshot is only detected if the
 
 See also https://github.com/restic/restic/issues/2092
 
-### Requirements
+
+
+## Usage
+Rename `config-schema.cfg` to `config.cfg` and edit it. Make sure the config file is in the same folder as `backup` and run
+
+```bash
+$ ./backup
+```
+
+
+
+## Requirements
 
 * restic
 * rclone
