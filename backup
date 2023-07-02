@@ -11,9 +11,14 @@ set -o nounset
 set -o pipefail
 SCRIPT_DIR="$(dirname "$(realpath "$BASH_SOURCE")")"
 
-source "$SCRIPT_DIR/config.cfg"
+
+# parse config file
+# must be in same folder as this script
+cd "$SCRIPT_DIR"
+source "./config.cfg"
 export RESTIC_PASSWORD="$PASSWORD"
-cd "$SCRIPT_DIR"; REPOSITORY="$(realpath "$REPOSITORY")"
+REPOSITORY="$(realpath "$REPOSITORY")"
+SERVE_FUSE_MOUNT="$(realpath "$SERVE_FUSE_MOUNT")"
 
 
 
@@ -115,8 +120,8 @@ cp "$(realpath "$restic_path")" "$ROOT/restic"
 # construct command
 cmd_1=(/restic -r /repository backup --ignore-inode /"$SOURCE_NAME")
 cmd_2=(unshare -rR "$ROOT" "${cmd_1[@]}")
-cmd_3=("$SCRIPT_DIR/serve-rclone-mount" --mountpoint "$ROOT/$SOURCE_NAME" -- "$SOURCE" "${cmd_2[@]}")
-cmd_4=("$SCRIPT_DIR/serve-bindfs-mount" --mountpoint "$ROOT/repository" -- "$REPOSITORY" "${cmd_3[@]}")
+cmd_3=("$SERVE_FUSE_MOUNT/serve-rclone-mount" --mountpoint "$ROOT/$SOURCE_NAME" -- "$SOURCE" "${cmd_2[@]}")
+cmd_4=("$SERVE_FUSE_MOUNT/serve-bindfs-mount" --mountpoint "$ROOT/repository" -- "$REPOSITORY" "${cmd_3[@]}")
 
 # run the command
 log_info ""
