@@ -54,7 +54,9 @@ send_succ () {
 
 
 
-
+# if exit signal is received, retval will be the exit code of the last command that exited
+#    if backup was lauched, retval will be exit code of backup, because serve-fuse-mount always exits
+#    otherwise, retval will likely be 0 and this script will say "finished without backing up"
 
 exit_handler () {
     retval=$?
